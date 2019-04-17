@@ -30,7 +30,27 @@ def softmax_loss_naive(W, X, y, reg):
   # here, it is easy to run into numeric instability. Don't forget the        #
   # regularization!                                                           #
   #############################################################################
-  pass
+  num_train = X.shape[0]
+  for i in range(num_train):
+    scores = X[i].dot(W)
+    scores_exp = np.exp(scores)
+    scores_exp_sum = np.sum(scores_exp)
+    probs = scores_exp / scores_exp_sum
+    loss += -np.log(probs[y[i]])
+    for j in range(W.shape[1]):
+      if y[i] == j:
+        # dW[:, j] = -1. / probs[y[i]] * (X[i] * probs[y[i]] * (1 - probs[y[i]]))
+        #          = X[i] * (probs[y[i]] - 1)
+        dW[:, j] += X[i] * (probs[y[i]] - 1)
+      else:
+        # dW[:, j] = -1. / probs[y[i]] * (-X[i] * probs[j] * probs[y[i]])
+        #          = X[i] * probs[j]
+        dW[:, j] += X[i] * probs[j]
+
+  loss /= num_train
+  dW /= num_train
+  loss += reg * np.sum(W * W)
+  dW += 2 * reg * W
   #############################################################################
   #                          END OF YOUR CODE                                 #
   #############################################################################
@@ -54,7 +74,18 @@ def softmax_loss_vectorized(W, X, y, reg):
   # here, it is easy to run into numeric instability. Don't forget the        #
   # regularization!                                                           #
   #############################################################################
-  pass
+  scores = X.dot(W)
+  scores_exp = np.exp(scores)
+  scores_exp_sum = np.sum(scores_exp, axis=1).reshape(-1, 1)
+  probs = scores_exp / scores_exp_sum
+  loss = np.mean(-np.log(probs[range(y.shape[0]), y]))
+
+  probs[range(y.shape[0]), y] -= 1
+  dW = X.T.dot(probs)
+  dW /= X.shape[0]
+
+  loss += reg * np.sum(W * W)
+  dW += 2 * reg * W
   #############################################################################
   #                          END OF YOUR CODE                                 #
   #############################################################################
