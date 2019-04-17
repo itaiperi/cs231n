@@ -35,13 +35,17 @@ def svm_loss_naive(W, X, y, reg):
       margin = scores[j] - correct_class_score + 1 # note delta = 1
       if margin > 0:
         loss += margin
+        dW[:, j] += X[i]
+        dW[:, y[i]] += -X[i]
 
   # Right now the loss is a sum over all training examples, but we want it
   # to be an average instead so we divide by num_train.
   loss /= num_train
+  dW /= num_train
 
   # Add regularization to the loss.
   loss += reg * np.sum(W * W)
+  dW += 2 * reg * W
 
   #############################################################################
   # TODO:                                                                     #
@@ -70,7 +74,17 @@ def svm_loss_vectorized(W, X, y, reg):
   # Implement a vectorized version of the structured SVM loss, storing the    #
   # result in loss.                                                           #
   #############################################################################
-  pass
+#  print(X.shape, y.shape)
+  num_train = X.shape[0]
+  scores = X.dot(W)
+  scores_correct = scores[range(X.shape[0]), y].reshape(-1, 1)
+  loss_per_class = scores - scores_correct + 1
+  # zero-out loss of correct labels
+  loss_per_class[range(X.shape[0]), y] = 0
+  loss_per_class[loss_per_class <= 0] = 0
+  # Sum to get L_i, and then mean over all L_i's
+  loss = loss_per_class.sum(axis=1).mean()
+  loss += reg * np.sum(W * W)
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
@@ -85,7 +99,13 @@ def svm_loss_vectorized(W, X, y, reg):
   # to reuse some of the intermediate values that you used to compute the     #
   # loss.                                                                     #
   #############################################################################
-  pass
+  samples_for_gradients = np.zeros(loss_per_class.shape)
+  # Make array in which for each class, we mark by 1 which samples are to be included in the loss (remember - the loss for a weight in specific L_i is X_i), and we mark by -count which samples
+  samples_for_gradients[loss_per_class > 0] = 1
+  samples_for_gradients[range(y.shape[0]), y] = -np.count_nonzero(loss_per_class, axis=1)
+  dW = samples_for_gradients.T.dot(X).T  
+  dW /= num_train
+  dW += 2 * reg * W
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
