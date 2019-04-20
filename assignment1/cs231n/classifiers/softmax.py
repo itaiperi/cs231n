@@ -80,6 +80,7 @@ def softmax_loss_vectorized(W, X, y, reg):
   probs = scores_exp / scores_exp_sum
   loss = np.mean(-np.log(probs[range(y.shape[0]), y]))
 
+  # -1 for the right labels, because of the equation of the derivative.
   probs[range(y.shape[0]), y] -= 1
   dW = X.T.dot(probs)
   dW /= X.shape[0]
