@@ -6,6 +6,13 @@ from cs231n.layers import *
 from cs231n.layer_utils import *
 
 
+def w_n(i):
+    return 'W%d' % i
+
+def b_n(i):
+    return 'b%d' % i
+
+
 class TwoLayerNet(object):
     """
     A two-layer fully-connected neural network with ReLU nonlinearity and
@@ -49,7 +56,10 @@ class TwoLayerNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        self.params[w_n(1)] = weight_scale * np.random.randn(input_dim, hidden_dim)
+        self.params[b_n(1)] = np.zeros((hidden_dim,))
+        self.params[w_n(2)] = weight_scale * np.random.randn(hidden_dim, num_classes)
+        self.params[b_n(2)] = np.zeros((num_classes,))
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -83,7 +93,10 @@ class TwoLayerNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        fc1_out, fc1_cache = affine_forward(X, self.params[w_n(1)], self.params[b_n(1)])
+        relu1_out, relu1_cache = relu_forward(fc1_out)
+        fc2_out, fc2_cache = affine_forward(relu1_out, self.params[w_n(2)], self.params[b_n(2)])
+        scores = fc2_out
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -107,7 +120,15 @@ class TwoLayerNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        loss, dscores = softmax_loss(scores, y)
+        loss += 0.5 * self.reg * ((self.params[w_n(2)] ** 2).sum() + (self.params[w_n(1)] ** 2).sum())
+        dfc2_out, dW2, db2 = affine_backward(dscores, fc2_cache)
+        drelu1_out = relu_backward(dfc2_out, relu1_cache)
+        dfc1_out, dW1, db1 = affine_backward(drelu1_out, fc1_cache)
+        grads[w_n(2)] = dW2 + self.reg * self.params[w_n(2)]
+        grads[b_n(2)] = db2
+        grads[w_n(1)] = dW1 + self.reg * self.params[w_n(1)]
+        grads[b_n(1)] = db1
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -178,7 +199,15 @@ class FullyConnectedNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        previous_dim = input_dim
+        for i, hidden_dim in enumerate(hidden_dims, 1):
+            # Initialize fully-connected hidden layers' parameters
+            self.params[w_n(i)] = weight_scale * np.random.randn(previous_dim, hidden_dim)
+            self.params[b_n(i)] = np.zeros(hidden_dim)
+            previous_dim = hidden_dim
+        # Initialize output layer
+        self.params[w_n(i + 1)] = weight_scale * np.random.randn(previous_dim, num_classes)
+        self.params[b_n(i + 1)] = np.zeros(num_classes)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -223,7 +252,7 @@ class FullyConnectedNet(object):
         # behave differently during training and testing.
         if self.use_dropout:
             self.dropout_param['mode'] = mode
-        if self.normalization=='batchnorm':
+        if self.normalization == 'batchnorm':
             for bn_param in self.bn_params:
                 bn_param['mode'] = mode
         scores = None
@@ -241,7 +270,20 @@ class FullyConnectedNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        out = X
+        layer_caches = []
+        for i in range(1, self.num_layers):
+            # Forward through fully-connected
+            out, cache_fc = affine_forward(out, self.params[w_n(i)], self.params[b_n(i)])
+            # Forward through relu
+            out, cache_relu = relu_forward(out)
+            layer_caches.append((cache_fc, cache_relu, None, None))
+        # Scores layer, only fully-connected
+        i = self.num_layers
+        out, cache_fc = affine_forward(out, self.params[w_n(i)], self.params[b_n(i)])
+        layer_caches.append((cache_fc, None, None, None))
+
+        scores = out
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -268,7 +310,25 @@ class FullyConnectedNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        loss, dout = softmax_loss(scores, y)
+        loss += 0.5 * self.reg * np.sum([(param_value ** 2).sum() for param_name, param_value
+                                    in self.params.items() if param_name.startswith('W')])
+
+        # Handle last layer separately, due to no relu, normalization and dropout
+        cache = layer_caches.pop()[0]
+        dout, dw, db = affine_backward(dout, cache)
+        i = self.num_layers
+        grads[w_n(i)] = dw + self.reg * self.params[w_n(i)]
+        grads[b_n(i)] = db
+
+        for i, layer_cache in zip(range(self.num_layers - 1, 0, -1), layer_caches[::-1]):
+            cache_fc, cache_relu, cache_norm, cache_dropout = layer_cache
+            # Gradient of relu
+            dout = relu_backward(dout, cache_relu)
+            # Gradient of fully-connected
+            dout, dw, db = affine_backward(dout, cache_fc)
+            grads[w_n(i)] = dw + self.reg * self.params[w_n(i)]
+            grads[b_n(i)] = db
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################

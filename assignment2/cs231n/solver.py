@@ -192,7 +192,8 @@ class Solver(object):
 
 
     def _save_checkpoint(self):
-        if self.checkpoint_name is None: return
+        if self.checkpoint_name is None:
+            return
         checkpoint = {
           'model': self.model,
           'update_rule': self.update_rule,
