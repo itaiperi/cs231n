@@ -12,6 +12,12 @@ def w_n(i):
 def b_n(i):
     return 'b%d' % i
 
+def ga_n(i):
+    return 'gamma%d' % i
+
+def be_n(i):
+    return 'beta%d' % i
+
 
 class TwoLayerNet(object):
     """
@@ -57,9 +63,9 @@ class TwoLayerNet(object):
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
         self.params[w_n(1)] = weight_scale * np.random.randn(input_dim, hidden_dim)
-        self.params[b_n(1)] = np.zeros((hidden_dim,))
+        self.params[b_n(1)] = np.zeros(hidden_dim)
         self.params[w_n(2)] = weight_scale * np.random.randn(hidden_dim, num_classes)
-        self.params[b_n(2)] = np.zeros((num_classes,))
+        self.params[b_n(2)] = np.zeros(num_classes)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -204,6 +210,15 @@ class FullyConnectedNet(object):
             # Initialize fully-connected hidden layers' parameters
             self.params[w_n(i)] = weight_scale * np.random.randn(previous_dim, hidden_dim)
             self.params[b_n(i)] = np.zeros(hidden_dim)
+            # if normalization in ['batchnorm', 'layernorm']:
+            if normalization == 'batchnorm':
+                # Initialize gamma and beta of batchnorm/layernorm
+                self.params[ga_n(i)] = np.ones(hidden_dim)
+                self.params[be_n(i)] = np.zeros(hidden_dim)
+            elif normalization == 'layernorm':
+                # Initialize gamma and beta of layernorm
+                self.params[ga_n(i)] = np.ones(hidden_dim)
+                self.params[be_n(i)] = np.zeros(hidden_dim)
             previous_dim = hidden_dim
         # Initialize output layer
         self.params[w_n(i + 1)] = weight_scale * np.random.randn(previous_dim, num_classes)
@@ -237,7 +252,6 @@ class FullyConnectedNet(object):
         # Cast all parameters to the correct datatype
         for k, v in self.params.items():
             self.params[k] = v.astype(dtype)
-
 
     def loss(self, X, y=None):
         """
@@ -273,15 +287,24 @@ class FullyConnectedNet(object):
         out = X
         layer_caches = []
         for i in range(1, self.num_layers):
+            cache_norm = None
             # Forward through fully-connected
-            out, cache_fc = affine_forward(out, self.params[w_n(i)], self.params[b_n(i)])
+            out, cache_affine = affine_forward(out, self.params[w_n(i)], self.params[b_n(i)])
+            if self.normalization == 'batchnorm':
+                # Forward through BN
+                out, cache_norm = batchnorm_forward(out, self.params[ga_n(i)], self.params[be_n(i)],
+                                                         self.bn_params[i - 1])
+            elif self.normalization == 'layernorm':
+                # Forward through BN
+                out, cache_norm = layernorm_forward(out, self.params[ga_n(i)], self.params[be_n(i)],
+                                                         self.bn_params[i - 1])
             # Forward through relu
             out, cache_relu = relu_forward(out)
-            layer_caches.append((cache_fc, cache_relu, None, None))
+            layer_caches.append((cache_affine, cache_relu, cache_norm, None))
         # Scores layer, only fully-connected
         i = self.num_layers
-        out, cache_fc = affine_forward(out, self.params[w_n(i)], self.params[b_n(i)])
-        layer_caches.append((cache_fc, None, None, None))
+        out, cache_affine = affine_forward(out, self.params[w_n(i)], self.params[b_n(i)])
+        layer_caches.append((cache_affine, None, None, None))
 
         scores = out
 
@@ -315,18 +338,28 @@ class FullyConnectedNet(object):
                                     in self.params.items() if param_name.startswith('W')])
 
         # Handle last layer separately, due to no relu, normalization and dropout
-        cache = layer_caches.pop()[0]
-        dout, dw, db = affine_backward(dout, cache)
+        cache_affine = layer_caches.pop()[0]
+        dout, dw, db = affine_backward(dout, cache_affine)
         i = self.num_layers
         grads[w_n(i)] = dw + self.reg * self.params[w_n(i)]
         grads[b_n(i)] = db
 
         for i, layer_cache in zip(range(self.num_layers - 1, 0, -1), layer_caches[::-1]):
-            cache_fc, cache_relu, cache_norm, cache_dropout = layer_cache
+            cache_affine, cache_relu, cache_norm, cache_dropout = layer_cache
             # Gradient of relu
             dout = relu_backward(dout, cache_relu)
+            if self.normalization == 'batchnorm':
+                # Gradient of batchnorm
+                dout, dgamma, dbeta = batchnorm_backward_alt(dout, cache_norm)
+                grads[ga_n(i)] = dgamma
+                grads[be_n(i)] = dbeta
+            elif self.normalization == 'layernorm':
+                # Gradient of batchnorm
+                dout, dgamma, dbeta = layernorm_backward(dout, cache_norm)
+                grads[ga_n(i)] = dgamma
+                grads[be_n(i)] = dbeta
             # Gradient of fully-connected
-            dout, dw, db = affine_backward(dout, cache_fc)
+            dout, dw, db = affine_backward(dout, cache_affine)
             grads[w_n(i)] = dw + self.reg * self.params[w_n(i)]
             grads[b_n(i)] = db
 
