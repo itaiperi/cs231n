@@ -288,6 +288,7 @@ class FullyConnectedNet(object):
         layer_caches = []
         for i in range(1, self.num_layers):
             cache_norm = None
+            cache_dropout = None
             # Forward through fully-connected
             out, cache_affine = affine_forward(out, self.params[w_n(i)], self.params[b_n(i)])
             if self.normalization == 'batchnorm':
@@ -300,7 +301,9 @@ class FullyConnectedNet(object):
                                                          self.bn_params[i - 1])
             # Forward through relu
             out, cache_relu = relu_forward(out)
-            layer_caches.append((cache_affine, cache_relu, cache_norm, None))
+            if self.use_dropout:
+                out, cache_dropout = dropout_forward(out, self.dropout_param)
+            layer_caches.append((cache_affine, cache_relu, cache_norm, cache_dropout))
         # Scores layer, only fully-connected
         i = self.num_layers
         out, cache_affine = affine_forward(out, self.params[w_n(i)], self.params[b_n(i)])
@@ -346,6 +349,9 @@ class FullyConnectedNet(object):
 
         for i, layer_cache in zip(range(self.num_layers - 1, 0, -1), layer_caches[::-1]):
             cache_affine, cache_relu, cache_norm, cache_dropout = layer_cache
+            if self.use_dropout:
+                # Gradient of dropout
+                dout = dropout_backward(dout, cache_dropout)
             # Gradient of relu
             dout = relu_backward(dout, cache_relu)
             if self.normalization == 'batchnorm':
