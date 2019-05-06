@@ -424,7 +424,7 @@ def layernorm_backward(dout, cache):
     dgamma = (dout * x_normed).sum(axis=0)
     dx_normed = dout * gamma
 
-    # Transpose, to ruse code of batch normalization
+    # Transpose, to reuse code of batch normalization
     dx_normed = dx_normed.T
     x_normed = x_normed.T
     # The last x_normed is due to dx_std/dx == x_normed (inner derivative of dx_normed/dx_std)
@@ -570,7 +570,20 @@ def conv_forward_naive(x, w, b, conv_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    pad, stride = conv_param['pad'], conv_param['stride']
+    N, C, H, W = x.shape
+    F, _, HH, WW = w.shape
+    H_tag = int(1 + (H + 2 * pad - HH) / stride)
+    W_tag = int(1 + (W + 2 * pad - WW) / stride)
+    out = np.zeros((N, F, H_tag, W_tag))
+    x_padded = np.pad(x, [(0, 0), (0, 0), (pad, pad), (pad, pad)], 'constant', constant_values=0)
+    for i in range(0, H_tag):
+        slice_vert = slice(i * stride, i * stride + HH)
+        for j in range(0, W_tag):
+            slice_horz = slice(j * stride, j * stride + WW)
+            x_relevant = x_padded[..., slice_vert, slice_horz]
+            for i_filter in range(w.shape[0]):
+                out[:, i_filter, i, j] = (w[i_filter, ...] * x_relevant).sum(axis=(1, 2, 3)) + b[i_filter]
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -599,7 +612,26 @@ def conv_backward_naive(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    x, w, b, conv_param = cache
+    pad, stride = conv_param['pad'], conv_param['stride']
+    N, C, H, W = x.shape
+    F, _, HH, WW = w.shape
+    H_tag = int(1 + (H + 2 * pad - HH) / stride)
+    W_tag = int(1 + (W + 2 * pad - WW) / stride)
+    x_padded = np.pad(x, [(0, 0), (0, 0), (pad, pad), (pad, pad)], 'constant', constant_values=0)
+
+    db = dout.sum(axis=(0, 2, 3))
+    dw = np.zeros_like(w)
+    dx_padded = np.zeros_like(x_padded)
+    for i in range(0, H_tag):
+        slice_vert = slice(i * stride, i * stride + HH)
+        for j in range(0, W_tag):
+            slice_horz = slice(j * stride, j * stride + WW)
+            x_relevant = x_padded[..., slice_vert, slice_horz]
+            for i_filter in range(dw.shape[0]):
+                dw[i_filter] += (x_relevant * dout[:, i_filter, i, j].reshape(-1, 1, 1, 1)).sum(axis=0)
+                dx_padded[..., slice_vert, slice_horz] += (w[i_filter] * dout[:, i_filter, i, j].reshape(-1, 1, 1, 1))
+    dx = dx_padded[..., pad:-pad, pad:-pad] if pad > 0 else dx_padded
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -633,7 +665,17 @@ def max_pool_forward_naive(x, pool_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    pool_height, pool_width, stride = pool_param['pool_width'], pool_param['pool_height'], pool_param['stride']
+    N, C, H, W = x.shape
+    H_tag = int(1 + (H - pool_height) / stride)
+    W_tag = int(1 + (W - pool_width) / stride)
+    out = np.zeros((N, C, H_tag, W_tag))
+    for i in range(0, H_tag):
+        slice_vert = slice(i * stride, i * stride + pool_height)
+        for j in range(0, W_tag):
+            slice_horz = slice(j * stride, j * stride + pool_width)
+            x_relevant = x[..., slice_vert, slice_horz]
+            out[..., i, j] = x_relevant.max(axis=(2, 3))
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -660,7 +702,20 @@ def max_pool_backward_naive(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    x, pool_param = cache
+    pool_height, pool_width, stride = pool_param['pool_width'], pool_param['pool_height'], pool_param['stride']
+    N, C, H, W = x.shape
+    H_tag = int(1 + (H - pool_height) / stride)
+    W_tag = int(1 + (W - pool_width) / stride)
+    dx = np.zeros_like(x)
+    for i in range(0, H_tag):
+        slice_vert = slice(i * stride, i * stride + pool_height)
+        for j in range(0, W_tag):
+            slice_horz = slice(j * stride, j * stride + pool_width)
+            x_relevant = x[..., slice_vert, slice_horz]
+            x_relevant_max = x_relevant.max(axis=(2, 3)).reshape(N, C, 1, 1)
+
+            dx[..., slice_vert, slice_horz] += (x_relevant == x_relevant_max) * dout[..., i, j].reshape(N, C, 1, 1)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -702,7 +757,10 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, C, H, W = x.shape
+    x_transposed_flattened = x.transpose((0, 2, 3, 1)).reshape(-1, C)
+    out, cache = batchnorm_forward(x_transposed_flattened, gamma, beta, bn_param)
+    out = out.reshape(N, H, W, C).transpose(0, 3, 1, 2)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -736,7 +794,10 @@ def spatial_batchnorm_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, C, H, W = dout.shape
+    dout_transposed_flattened = dout.transpose((0, 2, 3, 1)).reshape(-1, C)
+    dx, dgamma, dbeta = batchnorm_backward(dout_transposed_flattened, cache)
+    dx = dx.reshape(N, H, W, C).transpose(0, 3, 1, 2)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -776,7 +837,23 @@ def spatial_groupnorm_forward(x, gamma, beta, G, gn_param):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, C, H, W = x.shape
+    # Transpose and flatten to use batchnorm and layernorm code
+    x_transposed_flattened = x.reshape(N * G, -1).T
+
+    x_mean = np.mean(x_transposed_flattened, axis=0)
+    x_centered = x_transposed_flattened - x_mean
+    squared = x_centered ** 2
+    x_var = squared.mean(axis=0)
+    x_std = np.sqrt(x_var + eps)
+    x_istd = 1 / x_std
+    x_normed = x_centered * x_istd
+
+    # Transpose back, to get shape right
+    x_normed = x_normed.T.reshape(N, C, H, W)
+    out = gamma * x_normed + beta
+
+    cache = (x, x_mean, x_centered, x_var, x_std, x_istd, x_normed, gamma, G, eps)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -806,7 +883,21 @@ def spatial_groupnorm_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    x, x_mean, x_centered, x_var, x_std, x_istd, x_normed, gamma, G, eps = cache
+    N, C, H, W = x.shape
+
+    dbeta = dout.sum(axis=(0, 2, 3), keepdims=True)
+    dgamma = (dout * x_normed).sum(axis=(0, 2, 3), keepdims=True)
+    dx_normed = dout * gamma
+
+    # Transpose, to reuse code of batch normalization
+    dx_normed = dx_normed.reshape(N * G, -1).T
+    x_normed = x_normed.reshape(N * G, -1).T
+    # The last x_normed is due to dx_std/dx == x_normed (inner derivative of dx_normed/dx_std)
+    dx = x_istd * (dx_normed - dx_normed.mean(axis=0) - (dx_normed * x_normed).mean(axis=0) * x_normed)
+
+    # Tranpose back to original shape
+    dx = dx.T.reshape(N, C, H, W)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################

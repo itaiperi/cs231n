@@ -5,6 +5,11 @@ from cs231n.layers import *
 from cs231n.fast_layers import *
 from cs231n.layer_utils import *
 
+def w_n(i):
+    return 'W%d' % i
+
+def b_n(i):
+    return 'b%d' % i
 
 class ThreeLayerConvNet(object):
     """
@@ -55,7 +60,13 @@ class ThreeLayerConvNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        self.params[w_n(1)] = weight_scale * np.random.randn(num_filters, input_dim[0], filter_size, filter_size)
+        self.params[b_n(1)] = np.zeros(num_filters)
+        # divide by 4 because of pooling
+        self.params[w_n(2)] = weight_scale * np.random.randn(num_filters * np.prod(input_dim[1:]) // 4, hidden_dim)
+        self.params[b_n(2)] = np.zeros(hidden_dim)
+        self.params[w_n(3)] = weight_scale * np.random.randn(hidden_dim, num_classes)
+        self.params[b_n(3)] = np.zeros(num_classes)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -95,7 +106,10 @@ class ThreeLayerConvNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        conv_relu_pool_out, conv_relu_pool_cache = conv_relu_pool_forward(X, W1, b1, conv_param, pool_param)
+        hidden_out, hidden_cache = affine_relu_forward(conv_relu_pool_out, W2, b2)
+        affine_out, affine_cache = affine_forward(hidden_out, W3, b3)
+        scores = affine_out
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -118,7 +132,13 @@ class ThreeLayerConvNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        loss, dout = softmax_loss(scores, y)
+        loss += 0.5 * self.reg * np.sum([(param_value ** 2).sum() for param_name, param_value
+                                    in self.params.items() if param_name.startswith('W')])
+        dout, dW3, db3 = affine_backward(dout, affine_cache)
+        dout, dW2, db2 = affine_relu_backward(dout, hidden_cache)
+        dout, dW1, db1 = conv_relu_pool_backward(dout, conv_relu_pool_cache)
+        grads = {w_n(1): dW1, b_n(1): db1, w_n(2): dW2, b_n(2): db2, w_n(3): dW3, b_n(3): db3}
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
